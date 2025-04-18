@@ -60,8 +60,29 @@ jobs:
       run: |
         echo "DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}" > .env
         
-    - name: Deploy to server
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.7.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+        
+    - name: Setup known_hosts
       run: |
-        echo "Deploying to server..."
-        # Add deployment logic here (e.g., SSH into server, pull images, run docker-compose)
-        echo "Deployment completed!" 
+        mkdir -p ~/.ssh
+        ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+        
+    - name: Transfer deployment files
+      run: |
+        scp docker-compose.prod.yml ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:/opt/cafe-system/
+        scp .env ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:/opt/cafe-system/
+      
+    - name: Deploy to production server
+      run: |
+        ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "cd /opt/cafe-system && \
+        docker-compose -f docker-compose.prod.yml pull && \
+        docker-compose -f docker-compose.prod.yml up -d && \
+        docker system prune -af --volumes"
+        
+    - name: Verify deployment
+      run: |
+        ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "cd /opt/cafe-system && \
+        docker-compose -f docker-compose.prod.yml ps" 
